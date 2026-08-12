@@ -153,11 +153,22 @@ fn place_tooltip(
 
     let placement = &ctx.tooltip.placement;
 
+    // Everything below works in PHYSICAL pixels, because that is the space
+    // `UiGlobalTransform::translation`, `ComputedNode::size` and
+    // `Camera::physical_viewport_rect` all report in. `Window::cursor_position`
+    // is the odd one out — it is LOGICAL — so scale it up to match, and scale
+    // the final result back down when writing `Val::Px` (which is logical).
+    //
+    // At `scale_factor == 1` the two spaces coincide, which is why this went
+    // unnoticed; on a HiDPI display the tooltip was placed at roughly twice its
+    // intended offset and ended up clamped against a screen edge.
+    let scale = camera.target_scaling_factor().unwrap_or(1.0);
+
     // Calculate target position.
     let mut pos = if let TargetPoint::Fixed(target_anchor) = placement.target_point {
         target_gt.translation - target_computed.size * target_anchor.0 * Vec2::new(-1.0, 1.0)
     } else {
-        ctx.cursor_pos
+        ctx.cursor_pos * scale
     };
 
     // Apply tooltip anchor to target position.
@@ -165,7 +176,6 @@ fn place_tooltip(
 
     // Resolve offset `Val`s.
     let size = viewport.size().as_vec2();
-    let scale = camera.target_scaling_factor().unwrap_or(1.0);
     let offset_x = placement
         .offset_x
         .resolve(scale, size.x, size)
@@ -221,10 +231,12 @@ fn place_tooltip(
     }
 
     // Set position via `Node`.
+    // `Val::Px` is in LOGICAL pixels, so convert out of the physical space used
+    // above. Without this the tooltip is offset by the display's scale factor.
     let top_left = pos - half_size;
     let mut node = r!(node_query.get_mut(entity));
-    node.left = Val::Px(top_left.x);
-    node.top = Val::Px(top_left.y);
+    node.left = Val::Px(top_left.x / scale);
+    node.top = Val::Px(top_left.y / scale);
 
     // Set position via `UiGlobalTransform`.
     // This system has to run after `UiSystem::Layout` so that its size is calculated
