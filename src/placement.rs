@@ -8,6 +8,7 @@ use bevy_ecs::{
 };
 use bevy_math::{Affine2, Vec2};
 use bevy_sprite::Anchor;
+use bevy_text::{EmSize, RemSize};
 use bevy_ui::{
     ComputedNode, DefaultUiCamera, Node, UiGlobalTransform, UiRect, UiTargetCamera, Val,
 };
@@ -128,8 +129,13 @@ fn place_tooltip(
     mut node_query: Query<&mut Node>,
     gt_query: Query<&mut UiGlobalTransform>,
     children_query: Query<&Children>,
+    rem_size: Option<Res<RemSize>>,
 ) {
     rq!(matches!(ctx.state, TooltipState::Active));
+    // Bevy 0.20 resolves `Em`/`Rem` against these. The tooltip container has no
+    // font of its own, so `Em` falls back to the root size.
+    let rem = rem_size.map(|r| *r).unwrap_or_default();
+    let em = EmSize(rem.0);
     let target_gt = rq!(gt_query.get(ctx.target));
     let target_computed = rq!(computed_node_query.get(ctx.target));
     let entity = match &ctx.tooltip.content {
@@ -178,11 +184,11 @@ fn place_tooltip(
     let size = viewport.size().as_vec2();
     let offset_x = placement
         .offset_x
-        .resolve(scale, size.x, size)
+        .resolve(scale, size.x, size, em, rem)
         .unwrap_or_default();
     let offset_y = placement
         .offset_y
-        .resolve(scale, size.y, size)
+        .resolve(scale, size.y, size, em, rem)
         .unwrap_or_default();
 
     // Apply offset.
@@ -195,10 +201,18 @@ fn place_tooltip(
         top,
         bottom,
     } = placement.clamp_padding;
-    let left = left.resolve(scale, size.x, size).unwrap_or_default();
-    let right = right.resolve(scale, size.x, size).unwrap_or_default();
-    let top = top.resolve(scale, size.x, size).unwrap_or_default();
-    let bottom = bottom.resolve(scale, size.x, size).unwrap_or_default();
+    let left = left
+        .resolve(scale, size.x, size, em, rem)
+        .unwrap_or_default();
+    let right = right
+        .resolve(scale, size.x, size, em, rem)
+        .unwrap_or_default();
+    let top = top
+        .resolve(scale, size.x, size, em, rem)
+        .unwrap_or_default();
+    let bottom = bottom
+        .resolve(scale, size.x, size, em, rem)
+        .unwrap_or_default();
 
     // Apply clamping.
     let half_size = computed.size / 2.0;
